@@ -123,7 +123,10 @@ export default function Bento() {
       </article>
 
       {/* ── Pin your favorites ──────────────────────────────────────────── */}
-      <article className="bg-blue relative flex h-[290px] flex-col items-start justify-center gap-3 overflow-hidden rounded-[20px] p-5 md:col-start-2 md:row-span-2 md:row-start-2 md:h-auto md:gap-[18px] md:p-[30px] lg:gap-[14px] lg:p-10">
+      {/* The card only needs to grow once the artwork does, which is above
+          444px (41vw > 182px). Below that it keeps Framer's fixed 290px, so the
+          390px reference render stays exact. */}
+      <article className="bg-blue relative flex h-[290px] flex-col items-start justify-center gap-3 overflow-hidden rounded-[20px] p-5 min-[445px]:h-auto min-[445px]:min-h-[290px] md:col-start-2 md:row-span-2 md:row-start-2 md:h-auto md:min-h-0 md:gap-[18px] md:p-[30px] lg:gap-[14px] lg:p-10">
         <div className="text-[21px] leading-[25.2px] font-bold text-white md:text-[26px] md:leading-[31.2px] lg:text-[34px] lg:leading-[40.8px]">
           <h2>Pin your favorites</h2>
         </div>
@@ -134,7 +137,11 @@ export default function Bento() {
           <img
             src="/assets/3Q7u475opLaQ2oHjNIz3fRQoug.png"
             alt="A pinned capture floating above the desktop, annotated by hand with expand & edit and copy"
-            className="h-[182px] w-full object-contain md:h-[150px] lg:hidden"
+            /* Framer pins this to 182px tall, which is right at 390px wide but
+               leaves the artwork stranded in a sea of blue as the phone layout
+               stretches toward 810px. Grow it with the viewport instead; the
+               clamp floor keeps 390px byte-identical to the original. */
+            className="h-[clamp(182px,41vw,320px)] w-full object-contain md:h-[150px] lg:hidden"
           />
           <img
             src="/assets/K0mRuHwTE1vxL0lSxIsW06LeHQ.png"

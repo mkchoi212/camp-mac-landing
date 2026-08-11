@@ -1,6 +1,14 @@
 "use client";
 
-import { motion, useReducedMotion, type Transition } from "motion/react";
+import {
+  motion,
+  useMotionTemplate,
+  useReducedMotion,
+  useScroll,
+  useTransform,
+  type MotionValue,
+  type Transition,
+} from "motion/react";
 
 type Sticker = {
   src: string;
@@ -11,7 +19,23 @@ type Sticker = {
   rotate: number;
   /** Absolute position + box size, per breakpoint. */
   className: string;
+  /** Scroll drift, in px of translation per px of page scroll. */
+  dx?: number;
+  dy?: number;
+  /** Scroll spin, in degrees per px of page scroll. */
+  drot?: number;
 };
+
+/**
+ * As the hero scrolls away the tags fly up and out, each on its own vector and
+ * spinning at its own rate. Sampled off the live site at 1512x950 by reading the
+ * composed matrix at scrollY 0/100/200/300/450/600/800 — every channel is linear
+ * in scrollY, so a single rate per axis reproduces it exactly.
+ *
+ * Every measured rate is a clean multiple of one base unit, which is almost
+ * certainly a single Framer scroll transform driving all five:
+ */
+const U = 0.274952; // px of drift per px of scroll
 
 const MARKETING = {
   src: "/assets/JZEcGhGR9P1RCI4J0agL3LGI7Xk-512.png",
@@ -53,29 +77,44 @@ const TAGS: Sticker[] = [
   {
     ...MARKETING,
     rotate: -40,
+    dx: U,
+    dy: -7 * U,
+    drot: -0.0055,
     className:
       "h-[115px] w-[256px] md:top-[777px] md:left-[354px] lg:top-[716px] lg:left-[421px]",
   },
   {
     ...PLACES,
     rotate: 26,
+    dx: -0.5 * U,
+    dy: -5 * U,
+    drot: -0.1026,
     className: "h-[60px] w-[195px] md:bottom-[66px] md:left-[452px]",
   },
   {
     ...DESIGN,
     rotate: -16,
+    dx: U,
+    dy: -7 * U,
+    drot: 0.1012,
     className:
       "h-[100px] w-[200px] md:bottom-[65px] md:left-[293px] lg:bottom-[62px] lg:left-[calc(48.32618025751076%_-_100px)]",
   },
   {
     ...CODING,
     rotate: 0,
+    dx: -U,
+    dy: -7 * U,
+    drot: 0.099,
     className:
       "h-[54px] w-[211px] md:bottom-[54px] md:left-[306px] lg:bottom-[147px] lg:left-[437px]",
   },
   {
     ...INSPIRATIONS,
     rotate: -30,
+    dx: -3 * U,
+    dy: -4 * U,
+    drot: 0.0096,
     className:
       "h-[85px] w-[262px] md:bottom-[91px] md:left-[268px] lg:bottom-[134px] lg:left-[393px]",
   },
@@ -125,12 +164,10 @@ const SPRING: Transition = {
   mass: 0.9,
 };
 
-export default function Hero() {
-  const reduceMotion = useReducedMotion();
-
-  /* Plain <img>: these PNGs are already sized for their slot, so there is
-     nothing to gain from re-encoding them through the image optimizer. */
-  const stickerImage = (tag: Sticker) => (
+/* Plain <img>: these PNGs are already sized for their slot, so there is
+   nothing to gain from re-encoding them through the image optimizer. */
+function StickerImage({ tag }: { tag: Sticker }) {
+  return (
     // eslint-disable-next-line @next/next/no-img-element
     <img
       src={tag.src}
@@ -140,23 +177,54 @@ export default function Hero() {
       className="absolute inset-0 block h-full w-full object-contain"
     />
   );
+}
 
-  const renderSticker = (tag: Sticker, index: number) => (
+/**
+ * Outer layer owns the scroll drift, inner layer owns the entrance. Splitting
+ * them keeps the two from writing the same transform: the entrance only touches
+ * opacity and scale, so once it settles the composed transform is exactly
+ * `rotate(base)` at scrollY 0 — i.e. the reference's resting state.
+ */
+function ScrollSticker({
+  tag,
+  index,
+  scrollY,
+  reduceMotion,
+}: {
+  tag: Sticker;
+  index: number;
+  scrollY: MotionValue<number>;
+  reduceMotion: boolean | null;
+}) {
+  const x = useTransform(scrollY, (v) => v * (tag.dx ?? 0));
+  const y = useTransform(scrollY, (v) => v * (tag.dy ?? 0));
+  const rotate = useTransform(scrollY, (v) => tag.rotate + v * (tag.drot ?? 0));
+  const transform = useMotionTemplate`perspective(1200px) translate3d(${x}px, ${y}px, 0) rotate(${rotate}deg)`;
+
+  return (
     <motion.div
-      key={`${tag.src}-${index}`}
       className={`absolute ${tag.className}`}
-      style={{ transformPerspective: 1200 }}
-      initial={
+      style={
         reduceMotion
-          ? false
-          : { opacity: 0, scale: 0.62, y: 26, rotate: tag.rotate - 9 }
+          ? { transform: `rotate(${tag.rotate}deg)` }
+          : { transform, willChange: "transform" }
       }
-      animate={{ opacity: 1, scale: 1, y: 0, rotate: tag.rotate }}
-      transition={{ ...SPRING, delay: 0.15 + index * 0.08 }}
     >
-      {stickerImage(tag)}
+      <motion.div
+        className="absolute inset-0"
+        initial={reduceMotion ? false : { opacity: 0, scale: 0.62 }}
+        animate={{ opacity: 1, scale: 1 }}
+        transition={{ ...SPRING, delay: 0.15 + index * 0.08 }}
+      >
+        <StickerImage tag={tag} />
+      </motion.div>
     </motion.div>
   );
+}
+
+export default function Hero() {
+  const reduceMotion = useReducedMotion();
+  const { scrollY } = useScroll();
 
   const renderStaticSticker = (tag: Sticker, index: number) => (
     <div
@@ -164,7 +232,7 @@ export default function Hero() {
       className={`absolute ${tag.className}`}
       style={{ transform: `rotate(${tag.rotate}deg)` }}
     >
-      {stickerImage(tag)}
+      <StickerImage tag={tag} />
     </div>
   );
 
@@ -220,7 +288,15 @@ export default function Hero() {
             aria-hidden="true"
             className="absolute top-0 left-[calc(49.96226415094342%_-_50%)] hidden h-full w-full overflow-hidden md:block"
           >
-            {TAGS.map(renderSticker)}
+            {TAGS.map((tag, index) => (
+              <ScrollSticker
+                key={`${tag.src}-${index}`}
+                tag={tag}
+                index={index}
+                scrollY={scrollY}
+                reduceMotion={reduceMotion}
+              />
+            ))}
           </div>
         </div>
 
